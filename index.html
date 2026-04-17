@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>TournePage — Pédalier sans fil pour partitions</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#07070d">
+  <link rel="apple-touch-icon" href="icon-192x192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    :root {
+      --bg:         #07070d;
+      --surface:    #0f0f1e;
+      --surface2:   #171730;
+      --border:     #252548;
+      --gold:       #c8973b;
+      --gold-glow:  rgba(200,151,59,0.18);
+      --gold-dim:   #7a5c22;
+      --cream:      #ede4d0;
+      --cream-dim:  #7e7669;
+      --red:        #b03030;
+      --green:      #2e8a52;
+      --green-glow: rgba(46,138,82,0.2);
+      --sidebar-w:  280px;
+      --radius:     12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      background: var(--bg);
+      color: var(--cream);
+      height: 100dvh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ─── Screens ─── */
+    .screen { position: fixed; inset: 0; display: none; }
+    .screen.active { display: flex; }
+
+    /* ─── Scrollbar ─── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ══════════════════════════════════
+       MODE SELECTOR
+    ══════════════════════════════════ */
+    #screen-mode {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(ellipse at 50% 40%, #151530 0%, var(--bg) 70%);
+    }
+
+    .mode-logo {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    .mode-logo h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 300;
+      letter-spacing: 0.15em;
+      color: var(--gold);
+      text-shadow: 0 0 40px var(--gold-glow);
+    }
+    .mode-logo p {
+      font-style: italic;
+      font-size: 1.1rem;
+      color: var(--cream-dim);
+      letter-spacing: 0.05em;
+      margin-top: 6px;
+    }
+
+    .mode-cards {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 0 20px;
+    }
+
+    .mode-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 48px;
+      cursor: pointer;
+      color: var(--cream);
+      text-align: center;
+      width: 260px;
+      transition: transform .25s ease, border-color .25s, box-shadow .25s;
+      font-family: inherit;
+      position: relative;
+      overflow: hidden;
+    }
+    .mode-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, var(--gold-glow) 0%, transparent 60%);
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .mode-card:hover::before { opacity: 1; }
+    .mode-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--gold-dim);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px var(--gold-dim);
+    }
+    .mode-card:active { transform: translateY(-2px) scale(0.98); }
+    .mode-icon {
+      display: block;
+      font-size: 3rem;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 0 12px rgba(200,151,59,0.4));
+    }
+    .mode-card h2 {
+      font-size: 1.5rem;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+    .mode-card small {
+      font-size: 0.85rem;
+      color: var(--cream-dim);
+      font-style: italic;
+    }
+
+    .mode-hint {
+      margin-top: 40px;
+      font-size: 0.8rem;
+      color: var(--cream-dim);
+      font-style: italic;
+      letter-spacing: 0.05em;
+    }
+
+    /* ══════════════════════════════════
+       VIEWER (PC / TABLET)
+    ══════════════════════════════════ */
+    #screen-viewer {
+      flex-direction: row;
+    }
+
+    .viewer-sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      transition: width .3s ease, opacity .3s;
+      z-index: 10;
+    }
+    .viewer-sidebar.collapsed {
+      width: 0;
+      opacity: 0;
+      overflow: hidden;
+    }
+
+    .sidebar-brand {
+      padding: 20px 20px 10px;
+      font-size: 1.1rem;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      font-weight: 300;
+    }
+
+    .sidebar-panel {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-panel h4 {
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--cream-dim);
+      margin-bottom: 12px;
+      font-weight: 400;
+    }
+
+    /* Connection */
+    #conn-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--cream-dim);
+      flex-shrink: 0;
+      transition: background .4s;
+    }
+    .status-dot.waiting  { background: var(--gold); animation: pulse-gold 2s infinite; }
+    .status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green-glow); animation: none; }
+    .status-dot.error    { background: var(--red); }
+
+    @keyframes pulse-gold {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .room-code-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .room-code-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--cream-dim);
+      margin-bottom: 4px;
+    }
+    .room-code-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      color: var(--gold);
+      text-shadow: 0 0 20px var(--gold-glow);
+    }
+
+    #qr-container {
+      display: flex;
+      justify-content: center;
+      margin: 10px 0;
+    }
+    #qr-container canvas,
+    #qr-container img {
+      border-radius: 8px;
+      border: 3px solid var(--surface2);
+    }
+
+    .btn-copy {
+      width: 100%;
+      padding: 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--cream-dim);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      transition: all .2s;
+      margin-top: 6px;
+    }
+    .btn-copy:hover { border-color: var(--gold-dim); color: var(--gold); }
+    .btn-copy.copied { border-color: var(--green); color: var(--green); }
+
+    /* Navigation */
+    .nav-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .nav-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--cream);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 8px 14px;
+      transition: all .15s;
+      flex: 1;
+    }
+    .nav-btn:hover:not(:disabled) { border-color: var(--gold-dim); color: var(--gold); }
+    .nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+    #page-info {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--cream-dim);
+      text-align: center;
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    /* Zoom */
+    .zoom-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .zoom-row label { font-size: 0.8rem; color: var(--cream-dim); width: 36px; flex-shrink: 0; }
+    input[type="range"] {
+      flex: 1;
+      appearance: none;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--gold);
+      cursor: pointer;
+    }
+    #zoom-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--cream-dim);
+      width: 36px;
+      text-align: right;
+    }
+
+    /* Toggle options */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 0.88rem;
+      color: var(--cream-dim);
+      cursor: pointer;
+    }
+    .toggle-row:hover { color: var(--cream); }
+
+    .toggle {
+      width: 36px; height: 20px;
+      background: var(--border);
+      border-radius: 10px;
+      position: relative;
+      transition: background .2s;
+      flex-shrink: 0;
+    }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      left: 3px; top: 3px;
+      width: 14px; height: 14px;
+      background: var(--cream-dim);
+      border-radius: 50%;
+      transition: transform .2s, background .2s;
+    }
+    .toggle.on { background: var(--gold); }
+    .toggle.on::after { transform: translateX(16px); background: var(--bg); }
+
+    /* Upload / Back */
+    .btn-upload {
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, var(--gold) 0%, #a07528 100%);
+      border: none;
+      border-radius: 10px;
+      color: var(--bg);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      transition: opacity .2s, transform .15s;
+    }
+    .btn-upload:hover { opacity: 0.9; }
+    .btn-upload:active { transform: scale(0.97); }
+
+    .btn-back {
+      width: calc(100% - 32px);
+      margin: auto 16px 16px;
+      padding: 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--cream-dim);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      transition: all .2s;
+    }
+    .btn-back:hover { border-color: var(--red); color: var(--red); }
+
+    /* Sidebar toggle button */
+    .sidebar-toggle {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 100;
+      width: 36px; height: 36px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 4px;
+      transition: all .2s;
+      display: none;
+    }
+    .sidebar-toggle span {
+      display: block;
+      width: 18px; height: 2px;
+      background: var(--cream-dim);
+      border-radius: 1px;
+      transition: all .2s;
+    }
+    .sidebar-toggle:hover span { background: var(--gold); }
+
+    /* ── Main Canvas Area ── */
+    .viewer-main {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      background: #111115;
+    }
+
+    #drop-zone {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      border: 2px dashed var(--border);
+      margin: 40px;
+      border-radius: 20px;
+      transition: border-color .2s, background .2s;
+    }
+    #drop-zone.dragging {
+      border-color: var(--gold);
+      background: var(--gold-glow);
+    }
+    #drop-zone .dz-icon { font-size: 3rem; opacity: 0.4; }
+    #drop-zone p { color: var(--cream-dim); font-style: italic; font-size: 1rem; }
+
+    #canvas-wrapper {
+      position: absolute;
+      inset: 0;
+      overflow: auto;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+      gap: 8px;
+    }
+
+    #pdf-canvas, #pdf-canvas-2 {
+      box-shadow: 0 8px 40px rgba(0,0,0,0.8);
+      border-radius: 2px;
+      display: block;
+      max-width: 100%;
+      flex-shrink: 0;
+    }
+
+    /* Page turn animation overlay */
+    #page-flash {
+      position: fixed;
+      inset: 0;
+      background: rgba(200,151,59,0.06);
+      pointer-events: none;
+      opacity: 0;
+      z-index: 50;
+      transition: opacity 0.08s;
+    }
+    #page-flash.flash { opacity: 1; }
+
+    /* Keyboard hint */
+    .kbd-hint {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      font-size: 0.7rem;
+      color: var(--cream-dim);
+      font-style: italic;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    /* ══════════════════════════════════
+       CONTROLLER (PHONE)
+    ══════════════════════════════════ */
+    #screen-controller {
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .ctrl-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      gap: 12px;
+    }
+    .ctrl-brand {
+      font-size: 1rem;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      font-weight: 300;
+    }
+    #ctrl-status-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--cream-dim);
+    }
+    #ctrl-page-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--gold);
+      min-width: 60px;
+      text-align: right;
+    }
+
+    /* Connect form */
+    #ctrl-connect-form {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 30px;
+    }
+    #ctrl-connect-form h2 {
+      font-size: 1.8rem;
+      font-weight: 300;
+      letter-spacing: 0.08em;
+      color: var(--cream);
+      text-align: center;
+    }
+    #ctrl-connect-form p {
+      font-style: italic;
+      color: var(--cream-dim);
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    #code-input {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.4em;
+      text-align: center;
+      width: 220px;
+      padding: 16px 12px;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      color: var(--gold);
+      outline: none;
+      text-transform: uppercase;
+      transition: border-color .2s;
+    }
+    #code-input:focus { border-color: var(--gold-dim); }
+    #code-input::placeholder { color: var(--border); letter-spacing: 0.2em; }
+
+    .btn-connect {
+      padding: 16px 48px;
+      background: linear-gradient(135deg, var(--gold) 0%, #a07528 100%);
+      border: none;
+      border-radius: 14px;
+      color: var(--bg);
+      font-family: inherit;
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: opacity .2s, transform .15s;
+      width: 100%;
+      max-width: 260px;
+    }
+    .btn-connect:hover { opacity: 0.9; }
+    .btn-connect:active { transform: scale(0.96); }
+
+    #ctrl-error {
+      color: #e05050;
+      font-size: 0.85rem;
+      font-style: italic;
+      min-height: 20px;
+      text-align: center;
+    }
+
+    .ctrl-back-btn {
+      padding: 10px 24px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--cream-dim);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      transition: all .2s;
+    }
+    .ctrl-back-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Pedals ── */
+    #pedals-area {
+      flex: 1;
+      display: none;
+      flex-direction: row;
+      gap: 0;
+    }
+
+    .pedal {
+      flex: 1;
+      border: none;
+      cursor: pointer;
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(1.4rem, 5vw, 2.2rem);
+      font-weight: 300;
+      letter-spacing: 0.08em;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: transform .08s ease, filter .08s;
+      position: relative;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    .pedal::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity .12s;
+    }
+    .pedal:active::before { opacity: 1; }
+
+    .pedal-prev {
+      background: linear-gradient(160deg, #141428 0%, #0d0d1e 100%);
+      border-right: 1px solid var(--border);
+      color: #8aaad4;
+    }
+    .pedal-prev::before { background: rgba(100,140,200,0.12); }
+    .pedal-prev:active { filter: brightness(1.3); transform: scale(0.98); }
+
+    .pedal-next {
+      background: linear-gradient(160deg, #0a1a12 0%, #070d10 100%);
+      color: #7ecfa0;
+    }
+    .pedal-next::before { background: rgba(80,180,120,0.12); }
+    .pedal-next:active { filter: brightness(1.3); transform: scale(0.98); }
+
+    .pedal-icon {
+      font-size: clamp(2.5rem, 10vw, 5rem);
+      display: block;
+      line-height: 1;
+      filter: drop-shadow(0 0 16px currentColor);
+      opacity: 0.85;
+    }
+    .pedal-label { opacity: 0.7; }
+
+    /* Ripple effect */
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      transform: scale(0);
+      animation: ripple-anim 0.4s ease-out forwards;
+      pointer-events: none;
+    }
+    .pedal-prev .ripple { background: rgba(100,140,200,0.3); }
+    .pedal-next .ripple { background: rgba(80,180,120,0.3); }
+    @keyframes ripple-anim {
+      to { transform: scale(4); opacity: 0; }
+    }
+
+    /* Landscape pedals: stack vertically on portrait, side by side on landscape */
+    @media (orientation: landscape) and (max-height: 500px) {
+      #pedals-area { flex-direction: column; }
+      .pedal-icon { font-size: 2rem; }
+      .pedal { font-size: 1.1rem; gap: 6px; }
+    }
+
+    /* ══════════════════════════════════
+       NOTIFICATIONS / TOASTS
+    ══════════════════════════════════ */
+    #toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-size: 0.85rem;
+      color: var(--cream);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .25s, transform .25s;
+      z-index: 999;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Loading spinner */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(7,7,13,0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #loading-overlay.active { display: flex; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay p { color: var(--cream-dim); font-style: italic; }
+
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     SCREEN 1 — MODE SELECTOR
+═══════════════════════════════════════ -->
+<div id="screen-mode" class="screen active">
+  <div style="width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100dvh;">
+    <div class="mode-logo">
+      <h1>♩ TournePage</h1>
+      <p>Pédalier sans fil pour partitions musicales</p>
+    </div>
+    <div class="mode-cards">
+      <button class="mode-card" onclick="startViewerMode()">
+        <span class="mode-icon">🎼</span>
+        <h2>PC · Tablette</h2>
+        <small>Afficher les partitions<br>et recevoir les commandes</small>
+      </button>
+      <button class="mode-card" onclick="startControllerMode()">
+        <span class="mode-icon">🦶</span>
+        <h2>Téléphone</h2>
+        <small>Pédalier sans fil —<br>tourner les pages avec les pieds</small>
+      </button>
+    </div>
+    <p class="mode-hint">Ouvrez cette page sur les deux appareils simultanément</p>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SCREEN 2 — VIEWER (PC / TABLET)
+═══════════════════════════════════════ -->
+<div id="screen-viewer" class="screen">
+
+  <!-- Sidebar -->
+  <aside class="viewer-sidebar" id="viewer-sidebar">
+    <div class="sidebar-brand">♩ TournePage</div>
+
+    <!-- Connection panel -->
+    <div class="sidebar-panel">
+      <h4>Connexion Pédalier</h4>
+      <div id="conn-status">
+        <span class="status-dot waiting" id="status-dot"></span>
+        <span id="status-text">Initialisation…</span>
+      </div>
+      <div class="room-code-box">
+        <div class="room-code-label">Code de salle</div>
+        <div class="room-code-value" id="room-code-display">——————</div>
+      </div>
+      <div id="qr-container"></div>
+      <button class="btn-copy" id="btn-copy" onclick="copyRoomCode()">📋 Copier le code</button>
+    </div>
+
+    <!-- Navigation panel -->
+    <div class="sidebar-panel">
+      <h4>Navigation</h4>
+      <div class="nav-row">
+        <button class="nav-btn" id="btn-prev-sidebar" onclick="prevPage()" disabled>◀</button>
+        <div id="page-info">— / —</div>
+        <button class="nav-btn" id="btn-next-sidebar" onclick="nextPage()" disabled>▶</button>
+      </div>
+    </div>
+
+    <!-- Zoom panel -->
+    <div class="sidebar-panel">
+      <h4>Zoom</h4>
+      <div class="zoom-row">
+        <label>🔍</label>
+        <input type="range" id="zoom-slider" min="0.4" max="3.0" step="0.05" value="1.0" oninput="onZoomChange(this.value)">
+        <div id="zoom-value">100%</div>
+      </div>
+      <div class="zoom-row" style="gap:6px;">
+        <button class="nav-btn" onclick="zoomOut()">−</button>
+        <button class="nav-btn" onclick="zoomFit()">⊡ Adapter</button>
+        <button class="nav-btn" onclick="zoomIn()">+</button>
+      </div>
+    </div>
+
+    <!-- Options panel -->
+    <div class="sidebar-panel">
+      <h4>Affichage</h4>
+      <label class="toggle-row" onclick="toggleTwoPage()">
+        <span>Deux pages</span>
+        <span class="toggle" id="toggle-two-page"></span>
+      </label>
+      <label class="toggle-row" onclick="toggleFullscreen()">
+        <span>Plein écran</span>
+        <span class="toggle" id="toggle-fullscreen"></span>
+      </label>
+      <label class="toggle-row" onclick="toggleSidebar()">
+        <span>Masquer le panneau</span>
+        <span class="toggle" id="toggle-sidebar"></span>
+      </label>
+    </div>
+
+    <!-- Upload -->
+    <div class="sidebar-panel">
+      <h4>Partition</h4>
+      <input type="file" id="pdf-input" accept=".pdf" style="display:none" onchange="loadPDFFile(event)">
+      <button class="btn-upload" onclick="document.getElementById('pdf-input').click()">📂 Ouvrir un PDF</button>
+    </div>
+
+    <!-- Keyboard shortcuts info -->
+    <div class="sidebar-panel" style="font-size:0.75rem;color:var(--cream-dim);line-height:1.8;">
+      <h4>Raccourcis clavier</h4>
+      <div><kbd style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;">←</kbd> Page précédente</div>
+      <div><kbd style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;">→</kbd> Page suivante</div>
+      <div><kbd style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;">Space</kbd> Page suivante</div>
+      <div><kbd style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;">F</kbd> Plein écran</div>
+      <div><kbd style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;">+/−</kbd> Zoom</div>
+    </div>
+
+    <div style="flex:1"></div>
+    <button class="btn-back" onclick="goHome()">← Retour</button>
+  </aside>
+
+  <!-- Main canvas area -->
+  <main class="viewer-main" id="viewer-main">
+    <div id="drop-zone" onclick="document.getElementById('pdf-input').click()">
+      <span class="dz-icon">🎵</span>
+      <p>Déposez votre partition PDF ici</p>
+      <button class="btn-upload" style="width:180px;" onclick="event.stopPropagation();document.getElementById('pdf-input').click()">📂 Ouvrir</button>
+      <small style="color:var(--cream-dim);font-style:italic;">ou connectez d'abord votre pédalier →</small>
+    </div>
+    <div id="canvas-wrapper">
+      <canvas id="pdf-canvas"></canvas>
+      <canvas id="pdf-canvas-2"></canvas>
+    </div>
+  </main>
+
+  <div id="page-flash"></div>
+  <div class="kbd-hint">← → Espace : tourner les pages · F : plein écran</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SCREEN 3 — CONTROLLER (PHONE)
+═══════════════════════════════════════ -->
+<div id="screen-controller" class="screen" style="flex-direction:column;">
+
+  <div class="ctrl-header">
+    <div class="ctrl-brand">♩ TournePage</div>
+    <div id="ctrl-status-row">
+      <span class="status-dot" id="ctrl-dot"></span>
+      <span id="ctrl-status-text">Non connecté</span>
+    </div>
+    <div id="ctrl-page-num">— / —</div>
+  </div>
+
+  <!-- Connect form -->
+  <div id="ctrl-connect-form">
+    <h2>Connecter le pédalier</h2>
+    <p>Entrez le code affiché sur<br>votre PC ou tablette</p>
+    <input type="text" id="code-input" placeholder="ABC123" maxlength="6"
+      oninput="this.value = this.value.toUpperCase()"
+      onkeydown="if(event.key==='Enter')connectToViewer()">
+    <div id="ctrl-error"></div>
+    <button class="btn-connect" onclick="connectToViewer()">Connecter →</button>
+    <button class="ctrl-back-btn" onclick="goHome()">← Retour</button>
+  </div>
+
+  <!-- Pedals -->
+  <div id="pedals-area">
+    <button class="pedal pedal-prev" id="pedal-prev">
+      <span class="pedal-icon">◀</span>
+      <span class="pedal-label">Précédent</span>
+    </button>
+    <button class="pedal pedal-next" id="pedal-next">
+      <span class="pedal-icon">▶</span>
+      <span class="pedal-label">Suivant</span>
+    </button>
+  </div>
+
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p id="loading-text">Chargement…</p>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+const state = {
+  mode: null,           // 'viewer' | 'controller'
+  pdfDoc: null,
+  currentPage: 1,
+  totalPages: 0,
+  scale: 1.0,
+  fitScale: 1.0,
+  twoPage: false,
+  peer: null,
+  conn: null,
+  roomCode: null,
+  connected: false,
+  rendering: false,
+};
+
+// PDF.js worker
+const pdfjsLib = window['pdfjs-dist/build/pdf'];
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+
+// ═══════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showToast(msg, duration = 2500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+function showLoading(text = 'Chargement…') {
+  document.getElementById('loading-text').textContent = text;
+  document.getElementById('loading-overlay').classList.add('active');
+}
+
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.remove('active');
+}
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+function flashPage() {
+  const el = document.getElementById('page-flash');
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 120);
+}
+
+function createRipple(btn, e) {
+  const ripple = document.createElement('span');
+  ripple.classList.add('ripple');
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const x = (e.clientX || rect.left + rect.width/2) - rect.left - size/2;
+  const y = (e.clientY || rect.top + rect.height/2) - rect.top - size/2;
+  ripple.style.cssText = `width:${size}px;height:${size}px;left:${x}px;top:${y}px;`;
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 500);
+}
+
+function goHome() {
+  cleanupPeer();
+  state.pdfDoc = null;
+  state.currentPage = 1;
+  state.totalPages = 0;
+  state.connected = false;
+  document.getElementById('canvas-wrapper').style.display = 'none';
+  document.getElementById('drop-zone').style.display = 'flex';
+  document.getElementById('pedals-area').style.display = 'none';
+  document.getElementById('ctrl-connect-form').style.display = 'flex';
+  showScreen('screen-mode');
+}
+
+function cleanupPeer() {
+  if (state.conn) { try { state.conn.close(); } catch(e){} state.conn = null; }
+  if (state.peer) { try { state.peer.destroy(); } catch(e){} state.peer = null; }
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  MODE: VIEWER (PC / TABLET)
+// ═══════════════════════════════════════════════════════
+function startViewerMode() {
+  state.mode = 'viewer';
+  showScreen('screen-viewer');
+  initViewerPeer();
+  setupDropZone();
+  setupKeyboard();
+}
+
+function initViewerPeer() {
+  const code = generateRoomCode();
+  state.roomCode = code;
+  const peerId = 'tp-' + code;
+
+  document.getElementById('room-code-display').textContent = code;
+  setViewerStatus('waiting', 'En attente du pédalier…');
+
+  state.peer = new Peer(peerId, { debug: 0 });
+
+  state.peer.on('open', () => {
+    setViewerStatus('waiting', 'En attente du pédalier…');
+    generateQR(code);
+  });
+
+  state.peer.on('connection', (conn) => {
+    state.conn = conn;
+    conn.on('open', () => {
+      state.connected = true;
+      setViewerStatus('connected', 'Pédalier connecté ✓');
+      showToast('🦶 Pédalier connecté !');
+      // Send current page info
+      sendViewerState();
+    });
+    conn.on('data', (data) => {
+      handleViewerData(data);
+    });
+    conn.on('close', () => {
+      state.connected = false;
+      setViewerStatus('waiting', 'Pédalier déconnecté');
+      showToast('⚠️ Pédalier déconnecté');
+    });
+    conn.on('error', (err) => {
+      setViewerStatus('error', 'Erreur connexion');
+    });
+  });
+
+  state.peer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      // ID taken, regenerate
+      cleanupPeer();
+      setTimeout(initViewerPeer, 300);
+    } else {
+      setViewerStatus('error', 'Erreur réseau');
+    }
+  });
+}
+
+function setViewerStatus(type, text) {
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot ' + type;
+  document.getElementById('status-text').textContent = text;
+}
+
+function generateQR(code) {
+  const container = document.getElementById('qr-container');
+  container.innerHTML = '';
+  const appUrl = window.location.href.split('?')[0];
+  const qrUrl = `${appUrl}?mode=phone&code=${code}`;
+  try {
+    new QRCode(container, {
+      text: qrUrl,
+      width: 140, height: 140,
+      colorDark: '#ede4d0',
+      colorLight: '#111126',
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  } catch(e) {
+    container.innerHTML = '<p style="font-size:0.7rem;color:var(--cream-dim);font-style:italic;">QR non disponible</p>';
+  }
+}
+
+function sendViewerState() {
+  if (state.conn && state.connected) {
+    state.conn.send({
+      type: 'state',
+      page: state.currentPage,
+      total: state.totalPages,
+    });
+  }
+}
+
+function handleViewerData(data) {
+  if (!data || !data.type) return;
+  if (data.type === 'next') nextPage();
+  else if (data.type === 'prev') prevPage();
+  else if (data.type === 'goto' && data.page) goToPage(data.page);
+}
+
+// ── PDF Loading ──
+function loadPDFFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadPDFBuffer(file);
+}
+
+function loadPDFBuffer(fileOrBlob) {
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    showLoading('Chargement de la partition…');
+    try {
+      const typedArray = new Uint8Array(ev.target.result);
+      state.pdfDoc = await pdfjsLib.getDocument(typedArray).promise;
+      state.totalPages = state.pdfDoc.numPages;
+      state.currentPage = 1;
+      document.getElementById('drop-zone').style.display = 'none';
+      const wrapper = document.getElementById('canvas-wrapper');
+      wrapper.style.display = 'flex';
+      await calcFitScale();
+      await renderCurrentPage();
+      updatePageInfo();
+      sendViewerState();
+      showToast(`📄 Partition chargée — ${state.totalPages} page(s)`);
+    } catch (err) {
+      showToast('❌ Erreur : fichier PDF invalide');
+      console.error(err);
+    }
+    hideLoading();
+  };
+  reader.readAsArrayBuffer(fileOrBlob);
+}
+
+async function calcFitScale() {
+  if (!state.pdfDoc) return;
+  const page = await state.pdfDoc.getPage(1);
+  const vp = page.getViewport({scale: 1});
+  const main = document.getElementById('viewer-main');
+  const availW = main.clientWidth - 48;
+  const availH = main.clientHeight - 48;
+  let scale;
+  if (state.twoPage) {
+    scale = Math.min((availW / 2 - 6) / vp.width, availH / vp.height);
+  } else {
+    scale = Math.min(availW / vp.width, availH / vp.height);
+  }
+  state.fitScale = Math.max(0.2, scale);
+  state.scale = state.fitScale;
+  document.getElementById('zoom-slider').value = state.scale;
+  document.getElementById('zoom-value').textContent = Math.round(state.scale * 100) + '%';
+}
+
+async function renderCurrentPage() {
+  if (!state.pdfDoc || state.rendering) return;
+  state.rendering = true;
+  try {
+    const c1 = document.getElementById('pdf-canvas');
+    const c2 = document.getElementById('pdf-canvas-2');
+
+    await renderPageToCanvas(state.currentPage, c1);
+
+    if (state.twoPage && state.currentPage + 1 <= state.totalPages) {
+      c2.style.display = 'block';
+      await renderPageToCanvas(state.currentPage + 1, c2);
+    } else {
+      c2.style.display = 'none';
+    }
+  } catch(e) { console.error(e); }
+  state.rendering = false;
+}
+
+async function renderPageToCanvas(pageNum, canvas) {
+  const page = await state.pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({scale: state.scale});
+  canvas.width  = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({canvasContext: ctx, viewport}).promise;
+}
+
+// ── Navigation ──
+async function nextPage() {
+  if (!state.pdfDoc) return;
+  const step = state.twoPage ? 2 : 1;
+  if (state.currentPage + step > state.totalPages) return;
+  state.currentPage = Math.min(state.currentPage + step, state.totalPages);
+  flashPage();
+  await renderCurrentPage();
+  updatePageInfo();
+  sendViewerState();
+}
+
+async function prevPage() {
+  if (!state.pdfDoc) return;
+  const step = state.twoPage ? 2 : 1;
+  if (state.currentPage <= 1) return;
+  state.currentPage = Math.max(state.currentPage - step, 1);
+  flashPage();
+  await renderCurrentPage();
+  updatePageInfo();
+  sendViewerState();
+}
+
+async function goToPage(n) {
+  if (!state.pdfDoc) return;
+  const p = Math.max(1, Math.min(n, state.totalPages));
+  state.currentPage = p;
+  flashPage();
+  await renderCurrentPage();
+  updatePageInfo();
+  sendViewerState();
+}
+
+function updatePageInfo() {
+  const pg = state.twoPage
+    ? `${state.currentPage}–${Math.min(state.currentPage+1, state.totalPages)}`
+    : `${state.currentPage}`;
+  document.getElementById('page-info').textContent = `${pg} / ${state.totalPages}`;
+  document.getElementById('btn-prev-sidebar').disabled = state.currentPage <= 1;
+  document.getElementById('btn-next-sidebar').disabled = state.currentPage >= state.totalPages;
+}
+
+// ── Zoom ──
+function onZoomChange(val) {
+  state.scale = parseFloat(val);
+  document.getElementById('zoom-value').textContent = Math.round(state.scale * 100) + '%';
+  if (state.pdfDoc) renderCurrentPage();
+}
+function zoomIn()  { const v = Math.min(3.0, state.scale + 0.15); document.getElementById('zoom-slider').value = v; onZoomChange(v); }
+function zoomOut() { const v = Math.max(0.4, state.scale - 0.15); document.getElementById('zoom-slider').value = v; onZoomChange(v); }
+function zoomFit() { document.getElementById('zoom-slider').value = state.fitScale; onZoomChange(state.fitScale); }
+
+// ── Options ──
+async function toggleTwoPage() {
+  state.twoPage = !state.twoPage;
+  document.getElementById('toggle-two-page').classList.toggle('on', state.twoPage);
+  if (state.pdfDoc) {
+    await calcFitScale();
+    await renderCurrentPage();
+    updatePageInfo();
+  }
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+    document.getElementById('toggle-fullscreen').classList.add('on');
+  } else {
+    document.exitFullscreen();
+    document.getElementById('toggle-fullscreen').classList.remove('on');
+  }
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('viewer-sidebar');
+  const tog = document.getElementById('toggle-sidebar');
+  sidebar.classList.toggle('collapsed');
+  tog.classList.toggle('on', sidebar.classList.contains('collapsed'));
+}
+
+// ── Drag & drop ──
+function setupDropZone() {
+  const main = document.getElementById('viewer-main');
+  main.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.add('dragging');
+  });
+  main.addEventListener('dragleave', () => {
+    document.getElementById('drop-zone').classList.remove('dragging');
+  });
+  main.addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'application/pdf') loadPDFBuffer(file);
+    else showToast('⚠️ Veuillez déposer un fichier PDF');
+  });
+}
+
+// ── Keyboard ──
+function setupKeyboard() {
+  document.addEventListener('keydown', (e) => {
+    if (state.mode !== 'viewer') return;
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    switch(e.key) {
+      case 'ArrowRight': case ' ': e.preventDefault(); nextPage(); break;
+      case 'ArrowLeft':            e.preventDefault(); prevPage(); break;
+      case 'f': case 'F':          toggleFullscreen(); break;
+      case '+': case '=':          zoomIn();  break;
+      case '-':                    zoomOut(); break;
+      case '0':                    zoomFit(); break;
+    }
+  });
+}
+
+// ── Copy room code ──
+function copyRoomCode() {
+  if (!state.roomCode) return;
+  const btn = document.getElementById('btn-copy');
+  navigator.clipboard.writeText(state.roomCode).then(() => {
+    btn.textContent = '✓ Copié !';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 Copier le code';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    showToast('Code : ' + state.roomCode, 4000);
+  });
+}
+
+// ── Window resize ──
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(async () => {
+    if (state.pdfDoc && state.mode === 'viewer') {
+      await calcFitScale();
+      await renderCurrentPage();
+    }
+  }, 200);
+});
+
+
+// ═══════════════════════════════════════════════════════
+//  MODE: CONTROLLER (PHONE)
+// ═══════════════════════════════════════════════════════
+function startControllerMode(autoCode) {
+  state.mode = 'controller';
+  showScreen('screen-controller');
+  initControllerPeer();
+  setupPedals();
+  if (autoCode) {
+    document.getElementById('code-input').value = autoCode;
+    // Auto-connect after peer is ready (slight delay)
+    setTimeout(connectToViewer, 1000);
+  }
+}
+
+function initControllerPeer() {
+  state.peer = new Peer({ debug: 0 });
+  state.peer.on('open', () => {
+    setCtrlStatus('waiting', 'Prêt à connecter');
+  });
+  state.peer.on('error', (err) => {
+    setCtrlStatus('error', 'Erreur réseau');
+    console.error(err);
+  });
+}
+
+function setCtrlStatus(type, text) {
+  const dot = document.getElementById('ctrl-dot');
+  dot.className = 'status-dot ' + type;
+  document.getElementById('ctrl-status-text').textContent = text;
+}
+
+function connectToViewer() {
+  const rawCode = document.getElementById('code-input').value.trim().toUpperCase();
+  if (rawCode.length < 4) {
+    document.getElementById('ctrl-error').textContent = 'Code invalide';
+    return;
+  }
+  document.getElementById('ctrl-error').textContent = '';
+  setCtrlStatus('waiting', 'Connexion…');
+
+  if (!state.peer) { initControllerPeer(); setTimeout(connectToViewer, 600); return; }
+
+  const peerId = 'tp-' + rawCode;
+  const conn = state.peer.connect(peerId, {reliable: true});
+  state.conn = conn;
+
+  conn.on('open', () => {
+    state.connected = true;
+    setCtrlStatus('connected', 'Connecté ✓');
+    showPedals();
+  });
+
+  conn.on('data', (data) => {
+    if (data && data.type === 'state') {
+      const pg = data.total > 0 ? `${data.page} / ${data.total}` : '—';
+      document.getElementById('ctrl-page-num').textContent = pg;
+    }
+  });
+
+  conn.on('close', () => {
+    state.connected = false;
+    setCtrlStatus('error', 'Connexion perdue');
+    showToast('⚠️ Connexion perdue');
+    document.getElementById('ctrl-page-num').textContent = '— / —';
+    document.getElementById('pedals-area').style.display = 'none';
+    document.getElementById('ctrl-connect-form').style.display = 'flex';
+  });
+
+  conn.on('error', (err) => {
+    setCtrlStatus('error', 'Introuvable');
+    document.getElementById('ctrl-error').textContent = 'Code introuvable ou connexion échouée';
+    console.error(err);
+  });
+
+  setTimeout(() => {
+    if (!state.connected && conn.open === false) {
+      setCtrlStatus('error', 'Introuvable');
+      document.getElementById('ctrl-error').textContent = 'Code introuvable — vérifiez le code';
+    }
+  }, 8000);
+}
+
+function showPedals() {
+  document.getElementById('ctrl-connect-form').style.display = 'none';
+  document.getElementById('pedals-area').style.display = 'flex';
+}
+
+let lastCmd = 0;
+function sendCmd(type, e) {
+  const now = Date.now();
+  if (now - lastCmd < 280) return; // debounce
+  lastCmd = now;
+  if (state.conn && state.connected) {
+    state.conn.send({type});
+  }
+  // Haptic
+  if (navigator.vibrate) navigator.vibrate(40);
+}
+
+function setupPedals() {
+  const prev = document.getElementById('pedal-prev');
+  const next = document.getElementById('pedal-next');
+
+  // Touch (primary for phone)
+  prev.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    createRipple(prev, e.touches[0]);
+    sendCmd('prev', e);
+  }, {passive: false});
+
+  next.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    createRipple(next, e.touches[0]);
+    sendCmd('next', e);
+  }, {passive: false});
+
+  // Click (desktop testing)
+  prev.addEventListener('click', (e) => {
+    createRipple(prev, e);
+    sendCmd('prev', e);
+  });
+  next.addEventListener('click', (e) => {
+    createRipple(next, e);
+    sendCmd('next', e);
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  AUTO-CONNECT VIA URL PARAMS
+// ═══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const urlMode = params.get('mode');
+  const urlCode = params.get('code');
+
+  if (urlMode === 'phone' || urlMode === 'controller') {
+    startControllerMode(urlCode || null);
+  }
+  // Clean URL (optional)
+  if (urlMode) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+});
+
+// Fullscreen change
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    document.getElementById('toggle-fullscreen').classList.remove('on');
+  }
+});
+</script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('SW enregistré !'))
+          .catch(err => console.log('Erreur SW', err));
+      });
+    }
+  </script>
+</body>
+</html>
