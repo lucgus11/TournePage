@@ -4,9 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>TournePage — Pédalier sans fil pour partitions</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#07070d">
-  <link rel="apple-touch-icon" href="icon-192x192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -392,33 +389,97 @@
     }
     .btn-back:hover { border-color: var(--red); color: var(--red); }
 
-    /* Sidebar toggle button */
-    .sidebar-toggle {
+    /* Sidebar reopen button (shown when sidebar is collapsed) */
+    #sidebar-reopen-btn {
       position: fixed;
       top: 14px;
       left: 14px;
       z-index: 100;
-      width: 36px; height: 36px;
+      width: 40px; height: 40px;
       background: var(--surface2);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
-      display: flex;
+      display: none;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      gap: 4px;
-      transition: all .2s;
-      display: none;
+      gap: 5px;
+      transition: border-color .2s, box-shadow .2s;
     }
-    .sidebar-toggle span {
+    #sidebar-reopen-btn:hover {
+      border-color: var(--gold-dim);
+      box-shadow: 0 0 12px var(--gold-glow);
+    }
+    #sidebar-reopen-btn span {
       display: block;
       width: 18px; height: 2px;
       background: var(--cream-dim);
       border-radius: 1px;
-      transition: all .2s;
+      transition: background .2s;
     }
-    .sidebar-toggle:hover span { background: var(--gold); }
+    #sidebar-reopen-btn:hover span { background: var(--gold); }
+    #sidebar-reopen-btn.visible { display: flex; }
+
+    /* Score fullscreen overlay button */
+    #score-fullscreen-btn {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      z-index: 90;
+      width: 40px; height: 40px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      transition: border-color .2s, box-shadow .2s;
+      color: var(--cream-dim);
+    }
+    #score-fullscreen-btn:hover {
+      border-color: var(--gold-dim);
+      color: var(--gold);
+      box-shadow: 0 0 12px var(--gold-glow);
+    }
+    /* Score floating nav (prev/next) shown in score-fullscreen mode */
+    #score-float-nav {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 90;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: rgba(15,15,30,0.85);
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      padding: 8px 18px;
+      backdrop-filter: blur(8px);
+    }
+    #score-float-nav button {
+      background: transparent;
+      border: none;
+      color: var(--cream);
+      cursor: pointer;
+      font-size: 1.2rem;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: color .15s, background .15s;
+      font-family: inherit;
+    }
+    #score-float-nav button:hover { color: var(--gold); background: var(--gold-glow); }
+    #score-float-nav button:disabled { opacity: 0.3; cursor: default; }
+    #score-float-page {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--cream-dim);
+      min-width: 70px;
+      text-align: center;
+    }
 
     /* ── Main Canvas Area ── */
     .viewer-main {
@@ -686,11 +747,16 @@
       to { transform: scale(4); opacity: 0; }
     }
 
-    /* Landscape pedals: stack vertically on portrait, side by side on landscape */
-    @media (orientation: landscape) and (max-height: 500px) {
+    /* Portrait → boutons haut/bas ; Landscape → boutons gauche/droite */
+    @media (orientation: portrait) {
       #pedals-area { flex-direction: column; }
-      .pedal-icon { font-size: 2rem; }
-      .pedal { font-size: 1.1rem; gap: 6px; }
+      .pedal-prev { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+    @media (orientation: landscape) {
+      #pedals-area { flex-direction: row; }
+      .pedal-prev { border-right: 1px solid var(--border); border-bottom: none; }
+      .pedal-icon { font-size: clamp(2rem, 8vh, 4rem); }
+      .pedal { font-size: clamp(1rem, 3vh, 1.6rem); gap: 8px; }
     }
 
     /* ══════════════════════════════════
@@ -825,8 +891,12 @@
         <span class="toggle" id="toggle-two-page"></span>
       </label>
       <label class="toggle-row" onclick="toggleFullscreen()">
-        <span>Plein écran</span>
+        <span>Plein écran navigateur</span>
         <span class="toggle" id="toggle-fullscreen"></span>
+      </label>
+      <label class="toggle-row" onclick="enterScoreFullscreen()">
+        <span>⛶ Partition en plein écran</span>
+        <span style="font-size:0.7rem;color:var(--cream-dim)">→</span>
       </label>
       <label class="toggle-row" onclick="toggleSidebar()">
         <span>Masquer le panneau</span>
@@ -870,8 +940,25 @@
   </main>
 
   <div id="page-flash"></div>
-  <div class="kbd-hint">← → Espace : tourner les pages · F : plein écran</div>
+  <div class="kbd-hint" id="kbd-hint">← → Espace : tourner les pages · F : plein écran · S : panneau</div>
 </div>
+
+<!-- Floating sidebar reopen button (shown when sidebar collapsed) -->
+<button id="sidebar-reopen-btn" title="Ouvrir le panneau" onclick="toggleSidebar()">
+  <span></span><span></span><span></span>
+</button>
+
+<!-- Score fullscreen: floating nav bar -->
+<div id="score-float-nav">
+  <button id="sfn-prev" onclick="prevPage()" disabled>◀</button>
+  <div id="score-float-page">— / —</div>
+  <button id="sfn-next" onclick="nextPage()" disabled>▶</button>
+  <span style="width:1px;height:20px;background:var(--border);margin:0 4px;"></span>
+  <button onclick="exitScoreFullscreen()" title="Quitter le plein écran partition">✕</button>
+</div>
+
+<!-- Score fullscreen toggle button (bottom-right of canvas) -->
+<button id="score-fullscreen-btn" title="Partition en plein écran" onclick="enterScoreFullscreen()">⛶</button>
 
 
 <!-- ═══════════════════════════════════════
@@ -1134,6 +1221,7 @@ function loadPDFBuffer(fileOrBlob) {
       document.getElementById('drop-zone').style.display = 'none';
       const wrapper = document.getElementById('canvas-wrapper');
       wrapper.style.display = 'flex';
+      document.getElementById('score-fullscreen-btn').style.display = 'flex';
       await calcFitScale();
       await renderCurrentPage();
       updatePageInfo();
@@ -1235,6 +1323,7 @@ function updatePageInfo() {
   document.getElementById('page-info').textContent = `${pg} / ${state.totalPages}`;
   document.getElementById('btn-prev-sidebar').disabled = state.currentPage <= 1;
   document.getElementById('btn-next-sidebar').disabled = state.currentPage >= state.totalPages;
+  updateScoreFloatNav();
 }
 
 // ── Zoom ──
@@ -1271,8 +1360,72 @@ function toggleFullscreen() {
 function toggleSidebar() {
   const sidebar = document.getElementById('viewer-sidebar');
   const tog = document.getElementById('toggle-sidebar');
+  const reopenBtn = document.getElementById('sidebar-reopen-btn');
   sidebar.classList.toggle('collapsed');
-  tog.classList.toggle('on', sidebar.classList.contains('collapsed'));
+  const isCollapsed = sidebar.classList.contains('collapsed');
+  tog.classList.toggle('on', isCollapsed);
+  reopenBtn.classList.toggle('visible', isCollapsed);
+  // Recalc PDF fit when sidebar width changes
+  setTimeout(async () => {
+    if (state.pdfDoc) { await calcFitScale(); await renderCurrentPage(); }
+  }, 320);
+}
+
+// ── Score fullscreen (hides sidebar, shows floating nav) ──
+function enterScoreFullscreen() {
+  const sidebar = document.getElementById('viewer-sidebar');
+  const floatNav = document.getElementById('score-float-nav');
+  const sfBtn = document.getElementById('score-fullscreen-btn');
+  const kbdHint = document.getElementById('kbd-hint');
+  const reopenBtn = document.getElementById('sidebar-reopen-btn');
+
+  // Collapse sidebar silently
+  sidebar.classList.add('collapsed');
+  document.getElementById('toggle-sidebar').classList.add('on');
+  reopenBtn.classList.remove('visible'); // hide hamburger, float nav takes over
+
+  floatNav.style.display = 'flex';
+  sfBtn.style.display = 'none';
+  kbdHint.style.display = 'none';
+  state.scoreFullscreen = true;
+  updateScoreFloatNav();
+
+  setTimeout(async () => {
+    if (state.pdfDoc) { await calcFitScale(); await renderCurrentPage(); }
+  }, 320);
+  showToast('⛶ Partition en plein écran — cliquez ✕ pour revenir');
+}
+
+function exitScoreFullscreen() {
+  const sidebar = document.getElementById('viewer-sidebar');
+  const floatNav = document.getElementById('score-float-nav');
+  const sfBtn = document.getElementById('score-fullscreen-btn');
+  const kbdHint = document.getElementById('kbd-hint');
+  const reopenBtn = document.getElementById('sidebar-reopen-btn');
+
+  sidebar.classList.remove('collapsed');
+  document.getElementById('toggle-sidebar').classList.remove('on');
+  reopenBtn.classList.remove('visible');
+
+  floatNav.style.display = 'none';
+  if (state.pdfDoc) sfBtn.style.display = 'flex';
+  kbdHint.style.display = '';
+  state.scoreFullscreen = false;
+
+  setTimeout(async () => {
+    if (state.pdfDoc) { await calcFitScale(); await renderCurrentPage(); }
+  }, 320);
+}
+
+function updateScoreFloatNav() {
+  if (!state.scoreFullscreen) return;
+  const pg = state.twoPage
+    ? `${state.currentPage}–${Math.min(state.currentPage+1, state.totalPages)}`
+    : `${state.currentPage}`;
+  document.getElementById('score-float-page').textContent =
+    state.totalPages > 0 ? `${pg} / ${state.totalPages}` : '— / —';
+  document.getElementById('sfn-prev').disabled = state.currentPage <= 1;
+  document.getElementById('sfn-next').disabled = state.currentPage >= state.totalPages;
 }
 
 // ── Drag & drop ──
@@ -1303,6 +1456,8 @@ function setupKeyboard() {
       case 'ArrowRight': case ' ': e.preventDefault(); nextPage(); break;
       case 'ArrowLeft':            e.preventDefault(); prevPage(); break;
       case 'f': case 'F':          toggleFullscreen(); break;
+      case 's': case 'S':          toggleSidebar(); break;
+      case 'Escape':               if (state.scoreFullscreen) exitScoreFullscreen(); break;
       case '+': case '=':          zoomIn();  break;
       case '-':                    zoomOut(); break;
       case '0':                    zoomFit(); break;
@@ -1492,14 +1647,5 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 </script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('SW enregistré !'))
-          .catch(err => console.log('Erreur SW', err));
-      });
-    }
-  </script>
 </body>
 </html>
